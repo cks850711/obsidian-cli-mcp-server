@@ -20,7 +20,7 @@ import { CHARACTER_LIMIT, BLOCKED_COMMANDS } from "./constants.js";
 
 const server = new McpServer({
   name: "obsidian-cli-mcp-server",
-  version: "0.1.0",
+  version: "0.2.0",
 });
 
 // ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ server.tool(
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("obsidian-cli-mcp-server v0.1.1 running via stdio");
+  console.error("obsidian-cli-mcp-server v0.2.0 running via stdio");
 }
 
 main().catch((error) => {
