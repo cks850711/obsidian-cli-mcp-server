@@ -29,3 +29,9 @@ temp/
 
 # Local docs
 docs/internal
+
+# Relay trigger file (touched by VM to fire launchd WatchPaths)
+.relay-trigger
+
+# Runtime logs
+logs/

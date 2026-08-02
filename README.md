@@ -106,6 +106,106 @@ The MCP server automatically tries the relay first, then falls back to direct sp
 | `OBSIDIAN_RELAY_PORT` | `27182` | Relay server port |
 | `OBSIDIAN_CLI_PATH` | `obsidian` | Path to the Obsidian CLI binary |
 
+### Auto-Start on Demand (macOS)
+
+Keeping a terminal window open just to host the relay is inconvenient — especially for sandboxed clients (VMs, containers) that can reach the relay over HTTP but cannot start a process on the host.
+
+The included launchd agent solves this: **touching a trigger file starts the relay**. Any client that can write to the repository directory can bring the relay up without a human opening a terminal.
+
+#### Install
+
+```bash
+bash scripts/install-relay-agent.sh
+```
+
+That is the whole setup — no paths to fill in, no config to edit. The script derives the repository location from its own position on disk, generates the `.plist` accordingly, and loads it with `launchctl`. Re-running it is safe (it reloads in place).
+
+The generated agent lives at `~/Library/LaunchAgents/com.obsidian-cli-mcp-server.relay.plist` and is **not** stored in the repository, so no absolute paths are ever committed.
+
+To remove it:
+
+```bash
+bash scripts/install-relay-agent.sh --uninstall
+```
+
+#### What it does
+
+Touching the trigger file causes launchd to run `scripts/start-relay.sh`, which:
+
+1. Exits immediately if the relay is already listening (repeated triggers are harmless)
+2. Refuses to start if the port is occupied by something else, rather than fighting over it
+3. Locates the `obsidian` binary — env var → `PATH` → common install paths → Spotlight — since it lives inside the app bundle and is *not* on launchd's default `PATH`
+4. Launches Obsidian if it is not already running (the CLI needs a live instance to talk to)
+5. Starts the relay in the foreground, letting launchd own the process
+
+The relay runs with no controlling terminal and no window; its output goes to `logs/relay.log`.
+
+```
+Client                       Host (macOS)
+──────                       ────────────
+relay not responding
+      │
+      ▼
+touch .relay-trigger ──────► launchd notices mtime change
+                                    │
+                                    ▼
+                             start-relay.sh
+                               ├─ ensure Obsidian is running
+                               └─ start relay on :27182
+      │                             │
+      ▼                             ▼
+retry after ~5s ───────────► relay ──► Obsidian ──► vault
+```
+
+#### Triggering it
+
+```bash
+touch /path/to/obsidian-cli-mcp-server/.relay-trigger
+```
+
+Then wait ~5 seconds and retry. Notes:
+
+- Use `touch`. Creating or deleting the file is unnecessary, and some sandboxes permit `touch` while blocking `unlink`.
+- launchd throttles a job to once per 10 seconds — spamming the trigger does nothing.
+- The agent is deliberately configured **without** `RunAtLoad` and `KeepAlive`, so the relay starts only when triggered. Add both keys to the generated plist if you would rather have it start at login and restart automatically on crash.
+
+#### Tell your agent about it
+
+Installing the agent is only half of it. Unless the LLM client knows the trigger exists, it will still report "the relay is down" and wait for a human — which is exactly the problem this was meant to remove.
+
+Put the recovery procedure somewhere the client loads **on every session**, not in a doc it has to go looking for: the failure needs to be self-healing at the moment it happens. For Claude Code that means `CLAUDE.md`; other clients have their own equivalent (system prompt, rules file, agent instructions).
+
+Something like:
+
+```markdown
+### If the Obsidian relay is not responding
+
+Do not ask me to start it. Recover it yourself:
+
+1. `touch <repo>/.relay-trigger`
+2. Wait 5–10 seconds, then retry the command.
+
+A launchd agent on the host watches that file and starts the relay
+automatically. Use `touch` — do not create or delete the file. launchd
+throttles to once per 10 seconds, so space out retries. Only report back
+if two attempts fail, and include the command and error output.
+```
+
+Replace `<repo>` with the absolute path to this repository as seen *from the client* — for sandboxed clients that is the path inside the sandbox, not on the host.
+
+#### Troubleshooting
+
+```bash
+tail -20 logs/relay.log                                  # what happened
+launchctl list | grep obsidian-cli-mcp-server            # is the agent loaded
+```
+
+| Symptom | Cause |
+|---|---|
+| `spawn obsidian ENOENT` | Obsidian not installed, or in a non-standard location — set `OBSIDIAN_CLI_PATH` |
+| Relay starts but commands fail | Obsidian's CLI is disabled — enable it in Settings → General → Command line interface |
+| Nothing happens on touch | Agent not loaded; re-run the install script |
+
 ## Security
 
 ### Blocked Commands
