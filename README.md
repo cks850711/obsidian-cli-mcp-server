@@ -1,5 +1,12 @@
 # obsidian-cli-mcp-server
 
+> [!NOTE]
+> **Archived (2026-10).** This project is no longer maintained, and this repository is read-only.
+>
+> It was built while the official Obsidian CLI could not be called from Electron-hosted agents. Spawning the CLI from inside Claude Desktop hung on a SingletonSocket IPC conflict between the two Electron processes, so this server routed calls through an HTTP relay started outside the app, with `expect` supplying a pseudo-TTY and launchd starting the relay on demand.
+>
+> My setup now runs agents from a terminal (Claude Code), where the `obsidian` binary can be called directly. That makes the MCP layer, the relay, and the launchd agent unnecessary, so I retired them. The code stays as it was at v0.2.0. It should still work if you need an MCP wrapper for an Electron-hosted client.
+
 A local MCP server that wraps the [official Obsidian CLI](https://obsidian.md/blog/obsidian-cli/) (v1.12+), giving LLM agents full access to 80+ vault operations through a single tool.
 
 - **Zero network dependencies** — no API keys, no cloud services; everything runs locally
